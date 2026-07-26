@@ -1,0 +1,235 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: AI Educational Content Pipeline API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: pipeline
+    description: AI agent pipeline operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /pipeline/run:
+    post:
+      operationId: runPipeline
+      tags: [pipeline]
+      summary: Run the full AI agent pipeline
+      description: |
+        Triggers Generator Agent → Reviewer Agent → optional Refinement (max 1 pass).
+        Returns the complete pipeline result including all intermediate outputs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineRequest"
+      responses:
+        "200":
+          description: Pipeline completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRun"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Pipeline execution failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /pipeline/runs:
+    get:
+      operationId: listPipelineRuns
+      tags: [pipeline]
+      summary: List recent pipeline runs
+      description: Returns recent pipeline run history, most recent first
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of pipeline runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineRunSummary"
+
+  /pipeline/runs/{id}:
+    get:
+      operationId: getPipelineRun
+      tags: [pipeline]
+      summary: Get a specific pipeline run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pipeline run details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRun"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    PipelineRequest:
+      type: object
+      required: [grade, topic]
+      properties:
+        grade:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: Target grade level (1-12)
+        topic:
+          type: string
+          minLength: 1
+          description: Educational topic to generate content for
+
+    MCQOption:
+      type: object
+      required: [label, text]
+      properties:
+        label:
+          type: string
+          description: "Option letter: A, B, C, or D"
+        text:
+          type: string
+
+    MCQ:
+      type: object
+      required: [question, options, answer]
+      properties:
+        question:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCQOption"
+        answer:
+          type: string
+          description: "Correct answer label: A, B, C, or D"
+
+    GeneratorOutput:
+      type: object
+      required: [explanation, mcqs]
+      properties:
+        explanation:
+          type: string
+          description: Grade-appropriate explanation of the topic
+        mcqs:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCQ"
+
+    ReviewerOutput:
+      type: object
+      required: [status, feedback]
+      properties:
+        status:
+          type: string
+          enum: [pass, fail]
+        feedback:
+          type: array
+          items:
+            type: string
+
+    PipelineRun:
+      type: object
+      required: [id, grade, topic, generatorOutput, reviewerOutput, refinementApplied, createdAt]
+      properties:
+        id:
+          type: integer
+        grade:
+          type: integer
+        topic:
+          type: string
+        generatorOutput:
+          $ref: "#/components/schemas/GeneratorOutput"
+        reviewerOutput:
+          $ref: "#/components/schemas/ReviewerOutput"
+        refinedOutput:
+          oneOf:
+            - $ref: "#/components/schemas/GeneratorOutput"
+            - type: "null"
+        refinementApplied:
+          type: boolean
+        durationMs:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    PipelineRunSummary:
+      type: object
+      required: [id, grade, topic, reviewStatus, refinementApplied, createdAt]
+      properties:
+        id:
+          type: integer
+        grade:
+          type: integer
+        topic:
+          type: string
+        reviewStatus:
+          type: string
+          enum: [pass, fail]
+        refinementApplied:
+          type: boolean
+        durationMs:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
